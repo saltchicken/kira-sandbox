@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 kira = "0.11.0"
 crossterm = "0.29.0"
+
+[profile.dev.package."*"]
+opt-level = 3
