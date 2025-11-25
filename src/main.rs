@@ -1,26 +1,57 @@
-use kira::sound::streaming::StreamingSoundData;
-use kira::{AudioManager, AudioManagerSettings, DefaultBackend, Easing, StartTime, Tween};
-use std::{thread, time::Duration};
+use crossterm::{
+    event::{Event, KeyCode, KeyEvent, poll, read},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
+use kira::Tween;
+use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
+use kira::{
+    AudioManager, AudioManagerSettings, DefaultBackend, effect::filter::FilterBuilder,
+    track::TrackBuilder,
+};
+use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    enable_raw_mode()?;
+    println!("Press 'Space' to play, 's' to stop, 'q' (quit)...\r\n");
+
     let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())?;
+    let mut track = manager.add_sub_track({
+        let mut builder = TrackBuilder::new();
+        builder.add_effect(FilterBuilder::new().cutoff(1000.0));
+        builder
+    })?;
+    let sound_data = StaticSoundData::from_file("hello.ogg")?;
 
-    let sound_data = StreamingSoundData::from_file("hello.ogg")?;
+    // ‼️ Change the handle's type from Option<SoundHandle> to Option<StaticSoundHandle>
+    let mut handle: Option<StaticSoundHandle> = None;
 
-    let mut sound = manager.play(sound_data)?;
-
-    // This is the new, correct way to build a linear tween
-    let pitch_tween = Tween {
-        start_time: StartTime::Immediate,
-        duration: Duration::from_secs(3),
-        easing: Easing::Linear,
-    };
-
-    sound.set_playback_rate(0.5, pitch_tween);
-
-    println!("Playing 'hello.ogg' with pitch-down effect...");
-    println!("(Program will exit after 5 seconds)");
-    thread::sleep(Duration::from_secs(5));
-
+    loop {
+        // Poll for keyboard events for 10ms
+        if poll(Duration::from_millis(10))? {
+            // If there's an event, read it
+            if let Event::Key(KeyEvent { code, .. }) = read()? {
+                match code {
+                    KeyCode::Char(' ') => {
+                        if let Some(mut h) = handle.take() {
+                            h.stop(Tween::default());
+                        }
+                        handle = Some(track.play(sound_data.clone())?);
+                    }
+                    KeyCode::Char('s') => {
+                        if let Some(mut h) = handle.take() {
+                            println!("Stopping sound...\r");
+                            h.stop(Tween::default());
+                        }
+                    }
+                    KeyCode::Char('q') => {
+                        println!("Quitting...\r");
+                        break; // Exit the loop
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    disable_raw_mode()?;
     Ok(())
 }
